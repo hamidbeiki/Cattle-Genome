@@ -701,3 +701,122 @@ for i in $(ls ${atacseq_data} | grep macs2.OUTPUT$)
 done;
 
 ```
+
+* **Transcript Border Validation**
+```
+module load bedtools2
+
+# get transcript's 5' offset bed file
+awk '$6=="+"' transcripts.bed >plus
+awk '$6=="-"' transcripts.bed >revs
+awk 'BEGIN { OFS = "\t" } { $8 = $2 - 30, $9 = $2 + 10} 1' plus \
+	| awk '{print $1,$8,$9,$7,".",$6,$7}' | tr ' ' '\t' > a
+awk 'BEGIN { OFS = "\t" } { $8 = $3 + 30, $9 = $3 - 10} 1' revs \
+	| awk '{print $1,$9,$8,$7,".",$6,$7}' | tr ' ' '\t' > b
+cat a b >TSS_offset.bed   
+	
+# get transcript supported by RAMPAGE		
+for i in $(ls ${rampage_dir} | grep bed$)
+	do
+		bedtools intersect -s -a TSS_offset.bed \
+			-b ${rampage_dir}/${i} | awk {print $4} | sort | uniq \
+			>>rampage_supported_transcripts
+done;
+
+# get transcript's 3' offset bed file
+awk '$6=="+"' transcripts.bed >plus
+awk '$6=="-"' transcripts.bed >revs
+awk 'BEGIN { OFS = "\t" } { $8 = $3 - 10, $9 = $3 + 165} 1' plus \
+	| awk '{print $1,$8,$9,$7,".",$6,$7}' | tr ' ' '\t' > a
+awk 'BEGIN { OFS = "\t" } { $8 = $2 - 165, $9 = $2 + 10} 1' revs \
+	| awk '{print $1,$9,$8,$7,".",$6,$7}' | tr ' ' '\t' > b
+cat a b >TTS_offset.bed   
+	
+### gets transcript supported by RAMPAGE		
+for i in $(ls ${wtts_dir} | grep bed$)
+	do
+		bedtools intersect -s -a TTS_offset.bed \
+			-b ${wtts_dir}/${i} | awk {print $4} | sort | uniq \
+			>>wtts_supported_transcripts
+done;
+
+```
+
+* **miRNA Data Analysis**
+```
+mirna_dir="/usr/miRNA-seq"
+cd ${mirna_dir}
+
+#trim reads
+module load cutadapt
+module load fastqc
+for i in $(ls | grep fq.gz$)
+	do
+    		trim_galore --gzip --cores 70 --quality 20 --fastqc --length 16 \
+    			--max_length 30 -a AACTGTAGGCACCATCAAT ${i}
+done;
+
+#map reads
+module load mirdeep2
+
+for i in $(cat trimmed_file_list)
+  do
+    	id="$(echo $i | rev | cut -c 15- | rev)"
+    	pigz -p 70 -c -d ${i}>${id}_trimmed.fq
+    	mapper.pl  ${id}_trimmed.fq -e -h -q -j -l 16 -o 70 -r 1 -m \
+    		-p /usr/ARS-UCD1.2.RepeadMasked.bowtie2/ARS-UCD1.2 -s reads_collapsed.${id}.fa \
+    		-t reads_vs_genome.${id}.arf -v -n |&tee>${id}-info
+    grep "#desc" -A2 ${id}-info >${id}-reads_mapping_info
+    mv bowtie.log ${id}-UNIQUE_reads_mapping_info
+    rm -r ${id}_trimmed.fq ${id}-info
+done;
+
+# get known miRNA sequences fro, mirBase
+wget https://www.mirbase.org/ftp/CURRENT/mature.fa.gz
+wget https://www.mirbase.org/ftp/CURRENT/hairpin.fa.gz
+gunzip -c mature.fa.gz | grep "Bos taurus" -A1 >bos_taurus-mature.fa
+gunzip -c hairpin.fa.gz | grep "Bos taurus" -A1 >bos_taurus-hairpin.fa
+
+# quantify miRNAs
+module load mirdeep2
+for i in $(ls | grep reads_collapsed | grep .fa$)
+    do
+     	id=$(echo $i | sed 's/reads\_collapsed\.//g; s/\.fa//g')
+	 miRDeep2.pl reads_collapsed.${id}.fa \
+	 	${genome}/bt_ref_ARS-UCD1.2.RepeadMasked_miRNA_quantification.fa \
+	 	reads_vs_genome.${id}.arf ${supplementary}/bos_taurus-mature.fa \
+	 	bos_taurus-mature.fa bos_taurus-hairpin.fa -t bta -c -v 2>report_filter.${id}.log
+done;
+
+# summarize miRNA expression results
+module load python
+python get_miRNAs_summary.py
+
+```
+
+* **Traits similarity Network**
+```
+module load python
+python trait_similarity_network.py
+
+```
+
+* **Additional Analysis**
+```
+module load python
+python compare_transcript_biotype_expression.py
+python compare_gene_biotype_expression.py
+python get_number_of_UTRs_per_gene.py
+python get_relation_betwee_protein_coding_genes_and_aberrant_transcripts.py
+python get_gene_biotype_changes_across_tissues.py
+python get_tissue_specificity_info.py
+
+```
+
+
+
+
+
+
+	
+

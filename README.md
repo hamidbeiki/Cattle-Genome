@@ -419,4 +419,79 @@ blastn -query ncRNAs.fa -db ncbi_ensemble_release_102_ncrnas_db \
 
 ```
 
+* **Alternative-splicing Analysis**
+```
+AS_dir='/usr/RNA-seq/AS'
+cd ${AS_dir}
+module load suppa
+suppa.py generateEvents -i rna_seq_transcriptome.gtf -o SUPPA_output -e FL -f ioe
+suppa.py generateEvents -i rna_seq_transcriptome.gtf -o SUPPA_output -e SE -f ioe
+suppa.py generateEvents -i rna_seq_transcriptome.gtf -o SUPPA_output -e SS -f ioe
+suppa.py generateEvents -i rna_seq_transcriptome.gtf -o SUPPA_output -e MX -f ioe
+suppa.py generateEvents -i rna_seq_transcriptome.gtf -o SUPPA_output -e RI -f ioe
+
+# get unique-splice exons
+module load python
+python get_unique_splice_exon_AS_events.py
+
+```
+
+* **ATAC-seq Data Analysis**
+```
+atacseq_data="/usr/ATAC-seq"  
+cd ${atacseq_data}
+# trim reads
+module load trimgalore
+for i in $(ls *_1.fastq)
+	do
+		id=$(echo ${i} | sed 's/\_1\.fastq//g')
+		trim_galore --paired ${id}_1.fastq ${id}_2.fastq;
+done;
+
+# alignment
+module load bowtie
+module load samtools
+for i in $(ls 1_val_1)
+	do
+		id=$(echo ${i} | sed 's/\_1\_val\_1//g')
+		treat=$(echo ${i} | sed 's/\_\_.*$//g')
+		tissue=$(echo ${i} | sed 's/^.*\_\_$//g' | sed 's/\_1\_val\_1//g')
+		bowtie -x /usr/ARS-UCD1.2.RepeadMasked.bowtie/ARS --fr -1 \
+		${treat}__${tissue}_1_val_1.fastq -2 ${treat}__${tissue}_2_val_2.fastq \
+		-S ${tissue}_${treat}.sam
+		samtools view -bSq 30 ${tissue}_${treat}.sam >${tissue}_${treat}_unique.sam 
+		samtools sort ${tissue}_${treat}_unique.sam>${tissue}_${treat}_unique_sorted.sam	
+done;
+
+# filter duplicated reads
+module purge
+module load picard
+module load samtools
+for i in $(ls unique_sorted.sam)
+	do
+		id=$(echo ${i} | sed 's/\_unique\_sorted.sam//g')
+		tissue=$(echo ${id} | sed 's/\_.*$//g')
+		treat=$(echo ${id} | sed 's/^.*\_//g')
+		picard MarkDuplicates REMOVE_DUPLICATES=true \
+		METRICS_FILE=${tissue}_Duplicates.txt INPUT=${i} \
+		OUTPUT=${tissue}_${treat}_DuplicatesRemoved.sam
+		samtools view -bS ${tissue}_${treat}_DuplicatesRemoved.sam \
+		>${tissue}_${treat}_DuplicatesRemoved.bam	
+done;
+
+# peak calling
+module load macs2
+for i in $(ls DuplicatesRemoved.bam$ | grep -v input)
+	do
+		id=$(echo ${i} | sed 's/\_DuplicatesRemoved\.bam//g')
+		tissue=$(echo ${id} | sed 's/\_.*$//g')
+		treat=$(echo ${id} | sed 's/^.*\_//g')		
+		macs2 callpeak -t ${i} -c ${tissue}_input_DuplicatesRemoved.bam  --broad  \
+		--gsize 2.80e9 --broad-cutoff 0.1 --outdir ${tissue}_macs2.OUTPUT -n ${tissue}  \
+		-B --nomodel -q 0.0
+done;
+
+```
+
+
 

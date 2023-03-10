@@ -304,7 +304,7 @@ done;
 
 * **RAMPAGE Data Analysis**
 ```
-# RAMPAGE bed files were obtained from PMC8015843 study
+### RAMPAGE bed files were obtained from PMC8015843 study
 rampage_dir='/usr/RAMPAGE'
 
 ```
@@ -493,5 +493,211 @@ done;
 
 ```
 
+* **ChIP-seq Data Analysis**
+```
+#### ChIP-seq peaks (bed files) were received from MC7988148 study
+chip_dir='/usr/ChIP-seq'
+```
+* **PacBio Iso-seq Data Analysis**
+```
+### NOTE: the matched RNA-seq data were processed as described in "RNA-seq pre-processing",
+### "RNA-seq mapp to genome" and "Assemble RNA-seq-based Transcripts" sections
 
+# convert bax to bam
+module load smrtlink/7.0.0  		
+module load samtools
+module load bamtools
+pacbio_data='/usr/pacbio'
+cd ${pacbio_data}
 
+for i in $(cat libraries);
+	do 
+		bax2bam -o $lib $lib.1.bax.h5 $lib.2.bax.h5 $lib.3.bax.h5 
+done;  		
+
+### get CCS
+for i in $(cat libraries);
+	do
+		ccs --noPolish --minLength=300 --minPasses=1 --minZScore=-999 --maxDropFraction=0.8\
+	 		--minPredictedAccuracy=0.8 --minSnr=4 --reportFile ${lib}_report.txt \
+	 		${lib}.subreads.bam ${lib}.ccs.bam
+done;
+
+for i in $(ls | grep ccs.bam$)
+	do
+   		id=$(echo $i | rev | cut -c 5- | rev)
+   		dataset create --type ConsensusReadSet ${id}.XML ${i}
+done;
+
+# get Full length (FL) reads
+for i in $(ls | grep ccs.bam$)
+	do
+		id=$(echo $i | rev | cut -c 9- | rev)
+		lima ${id}.ccs.bam primers.fasta ${id}.ccs.primerCleaned.bam --isoseq --no-pbi
+		isoseq3 refine ${id}.ccs.primerCleaned.primer_5p--primer_3p.bam primers.fasta \
+			${id}.refinedFl.bam
+		isoseq3 cluster ${id}.refinedFl.bam ${id}.unpolishedFl.bam --verbose
+done;
+
+# get tissue's FL reads
+for i in $(awk '{print $3}' tissue-lib-info |  sort | uniq);
+	do 
+		awk -v tissue="${i}" '$3==tissue {print $1}' tissue-lib-info>tmp
+     		ls | grep refinedFl.bam$ | grep -f tmp>tmp_list
+     		bamtools merge -list tmp_list -out ${i}.refinedFl.bam
+     		isoseq3 cluster ${i}.refinedFl.bam ${i}.unpolishedFl.bam --verbose
+done;
+
+# get Full length non-chimeric FLNC reads
+for i in $(ls | grep ccs.bam$)
+	do
+  		id=$(echo $i | rev | cut -c 9- | rev)
+  		samtools bam2fq ${i} | seqtk seq -A > ${id}.ccs.fasta
+  		pbtranscript classify ${id}.ccs.fasta ${id}_draft.fasta --primer \
+  			primers_formatted.fasta --cpus 70 --flnc=${id}.flnc.fasta \
+  			--nfl=${id}.nfl.fasta --outDir ${id}_tmp
+  		rm -r ${id}_tmp
+done;
+
+# get tissue's FLNC reads
+for i in $(awk '{print $3}' tissue-lib-info |  sort | uniq);
+ do
+	echo "working on $i"
+   	awk -v tissue="${i}" '$3==tissue {print $1}' tissue-lib-info | \
+   		awk '{print $1"_s1_p0.flnc.fasta"}'>tmp
+   	{ xargs cat < tmp; } >${i}.flnc.fasta
+   	rm -r tmp
+   	echo "$i is done"
+done;
+
+# genome-guided error-correction with FMLRC
+module purge
+module load fmlrc/1.0.0
+for tissue in $(cat pacbio_tissue_list):
+	do 
+		fmlrc -p 70 ${pacbio_data}/${rna_seq}/${tissue}-norm/comp_msbwt.npy \
+			${tissue}.flnc.fasta ${tissue}_fmlrc_corrected_flnc.fa
+done;
+
+# denovo error-correction with proovread
+module load miniconda
+source activate proovreadenv
+for tissue in $(cat pacbio_tissue_list):
+	do
+		SeqChunker -s 20M -o ${tissue}-%03d.fa ${tissue}.flnc.fasta  
+		proovread  --long-reads=${tissue}-001.fa \
+			-s ${pacbio_data}/${rna_seq}/${tissue}-norm/${tissue}.normalized_reads.fq \
+			-p ${tissue}_proovread_corrected_flnc   -t 70 --no-sampling  --coverage=20 --ignore-sr-length
+done;		
+
+# concat proovread error-corrected reads with fmlrc error-corrected reads
+cat ${tissue}_proovread_corrected_flnc.fa ${tissue}_fmlrc_corrected_flnc.fa\
+	> ${tissue}_fmlrc-proovread_corrected_flnc.fa
+	
+# mapp error-corrected pacbio reads to bovine genome
+module purge
+module load gmap-gsnap-legacy
+for tissue in $(cat pacbio_tissue_list)
+	do
+		tissue=$(echo ${i} | sed 's/\_trinity//g')
+		gmap -D /usr/ARS-UCD1.2.RepeadMasked.GMAP -d GMAP_bostaurus \
+			-f samse --min-trimmed-coverage 0.90 --min-identity 0.95 \
+			${tissue}_fmlrc-proovread_corrected_flnc.fa \
+			>${tissue}_fmlrc-proovread_corrected_flnc.sam 2 \
+			>${tissue}_fmlrc-proovread_corrected_flnc.sam.log
+		sort -k 3,3 -k 4,4n ${tissue}_fmlrc-proovread_corrected_flnc.sam \
+			>${tissue}_fmlrc-proovread_corrected_flnc_sorted.sam
+done;
+
+# collapse & group reads into putative gene models
+module purge
+module load smrtlink
+module load cufflinks
+module load bedtools2
+
+genome_dir="/usr/ARS-UCD1.2.RepeadMasked.GMAP"
+for tissue in $(cat pacbio_tissue_list)
+	do
+		collapse_isoforms_by_sam.py --max_fuzzy_junction 0 \
+			--min-coverage 0.90 --min-identity 0.95 --input \
+			${tissue}_fmlrc-proovread_corrected_flnc.fa \
+			-s ${tissue}_fmlrc-proovread_corrected_flnc_sorted.sam \
+			-o ${tissue}
+		sed -i 's/chr//g' ${tissue}.collapsed.gff
+		gffread -w ${tissue}_transcripts.fa -g ${genome_dir}/bt_ref_ARS-UCD1.2.RepeadMasked.fa \
+			${tissue}.collapsed.gff
+done;
+
+### NOTE: The following steps were performed similar to what described in\
+### "Assemble RNA-seq-based Transcripts" section to "get ${tissue}_final.gff" files:\
+### "check splice-junction validity"; "check transcript coverage";\
+### "filter retained intron transcripts and non-canonical splice-junctions";
+### "filter genomic DNA reads"
+
+# combine tissue transcripts
+module load miniconda3/4.3.30-qdauveb
+source activate /home/beiki/.conda/envs/py-libs
+ls | grep gff$ | grep final> input_files
+cd ${pacbio_data}
+python combine-gtf_files.py input_files --combine
+
+```
+
+* **Oxford Nanopore Data Analysis**
+```
+### transcript coordinate file (gtf files) were received from PMC8173071 study
+nanopore_dir='/usr/nanopore'
+
+```
+
+* **Transcript Structure Validation**
+```
+module load miniconda3/4.3.30-qdauveb
+source activate /home/beiki/.conda/envs/py-libs
+cd ${rnaseq_dir}
+cat input_files
+	/usr/RNA-seq/rna_seq_transcriptome.gtf	
+	/usr/pacbio/pacbio_transcriptome.gtf
+	/usr/nanopore_dir/nanopore_transcriptome.gtf	
+	/usr/Ensembl_Bos_taurus.ARS-UCD1.2.gtf
+	/usr/NCBI_Bos_taurus.ARS-UCD1.2.gtf		
+python combine-gtf_files.py input_files --compare ---wtts_dir '/usr/WTTS-seq'\
+ 	---atac_dir '/usr/ATAC-seq'
+
+# get known gene's border extension
+module load python
+python get_gene_extensions.py
+
+# get the effect of gene extension on expression
+python relate_gene_extension_to_expression.py
+
+```
+
+* **Transcript Support With Epigenetic Data**
+```
+module load bedtools2
+cd ${rnaseq_dir}
+
+# get transcript bed file   		
+awk '$3=="transcript"{print $1,$4,$5,$12,".",$7,$12}' rna_seq_transcriptome.gtf \
+	sed 's/\"//g;s/\;//g' | tr ' ' '\t' > transcripts.bed
+
+# get promoters bed file
+awk '$6=="+"' transcripts.bed >plus
+awk '$6=="-"' transcripts.bed >revs
+awk 'BEGIN { OFS = "\t" } { $8 = $2 - 500, $9 = $2 + 300} 1' plus \
+	| awk '{print $1,$8,$9,$7,".",$6,$7}' | tr ' ' '\t' > a
+awk 'BEGIN { OFS = "\t" } { $8 = $3 + 500, $9 = $3 - 300} 1' revs \
+	| awk '{print $1,$9,$8,$7,".",$6,$7}' | tr ' ' '\t' > b
+cat a b >transcripts_promoters.bed  		
+
+# get transcript supported by ATAC-seq
+for i in $(ls ${atacseq_data} | grep macs2.OUTPUT$)
+	do
+		tissue=$(echo ${i} | se 's/\macs2.*$//g')
+		bedtools intersect -s -a transcripts_promoters.bed \
+			-b ${atacseq_data}/${tissue}_macs2.OUTPUT/peaks.bed | awk {print $4} | sort | uniq\
+			>>atac_supported_transcripts
+done;
+
+```

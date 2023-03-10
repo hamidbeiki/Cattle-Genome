@@ -314,7 +314,7 @@ module load miniconda3/4.3.30-qdauveb
 cd ${rnaseq_dir}
 source activate /usr/.conda/envs/py-libs
 ls | grep gff$ | grep final> input_files
-python combine-gtf_files.py input_files --combine ---wtts_dir '/usr/WTTS-seq'\
+python combine-gtf_files.py input_file ---wtts_dir '/usr/WTTS-seq'\
  	---atac_dir '/usr/ATAC-seq'
 
 # get transcript sequences
@@ -639,7 +639,7 @@ module load miniconda3/4.3.30-qdauveb
 source activate /home/beiki/.conda/envs/py-libs
 ls | grep gff$ | grep final> input_files
 cd ${pacbio_data}
-python combine-gtf_files.py input_files --combine
+python combine-gtf_files.py input_files
 
 ```
 
@@ -661,7 +661,7 @@ cat input_files
 	/usr/nanopore_dir/nanopore_transcriptome.gtf	
 	/usr/Ensembl_Bos_taurus.ARS-UCD1.2.gtf
 	/usr/NCBI_Bos_taurus.ARS-UCD1.2.gtf		
-python combine-gtf_files.py input_files --compare ---wtts_dir '/usr/WTTS-seq'\
+python compare-gtf_files.py input_files ---wtts_dir '/usr/WTTS-seq'\
  	---atac_dir '/usr/ATAC-seq'
 
 # get known gene's border extension

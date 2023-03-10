@@ -276,4 +276,27 @@ for i in $(ls | grep 5end_trimmed.fq$);
 			${id}_5end_trimmed_length_QC_filtered_ --outFilterMatchNminOverLread 0.9 \
 			--outFilterMismatchNoverLmax 0.05 --outSAMtype BAM SortedByCoordinate		
 done;
+
+# combine tissue replicates
+module purge
+module load picard
+flag=1
+for tissue in $(cat tissues);
+	do		
+		grep -Fw ${tissue} file_annotation | awk '{print $2}' | \
+			sed 's/fastq/5end\_trimmed\_errorCorrected\_filtered\.bam/g' >tmp
+		cat tmp | tr '\n' ' ' | sed 's/Ion/\I=Ion/g' | xargs -I "{}" \
+			sed "s/INPUTFILES/{}/g; s/TISSUE/${tissue}/g" picard_command.sh >tmp.sh\
+		bash tmp.sh
+		flag=$(expr $flag + 1 )
+done;
+
+# get bed files
+module load bedtools2
+for i in  $(ls | grep clean_WTTS_reads.bam$);
+	do
+		id=$(echo $i | sed 's/\.bam//g')
+		bamToBed -i ${i} >${id}.bed
+done;
+
 ```

@@ -241,9 +241,10 @@ done;
 
 ```
 
-* **WTTS-seq Data Analysis**
+### WTTS-seq Data Analysis
+
+* **Trim Adapters and T-rich Stretches Located at The 5’ End of Each Read**
 ``` 
-# trim adapters and T-rich stretches located at the 5’ end of each read
 # trim_T-rich_regions_from_reads_5end.pl were obtained from PMC4896187 study
 module purge
 module load perl
@@ -258,7 +259,10 @@ for i in $(ls | grep fastq$);
 		flag=$(expr $flag + 1)
 done;
 
-# error-correction, quality filter, and mapping
+```
+
+* **Error-correction, Quality Filter, and Mapping**
+```
 for i in $(ls | grep 5end_trimmed.fq$);
 	do
 		id=$(ech ${i} | sed 's/\.5end*$//g')
@@ -278,7 +282,9 @@ for i in $(ls | grep 5end_trimmed.fq$);
 			--outFilterMismatchNoverLmax 0.05 --outSAMtype BAM SortedByCoordinate		
 done;
 
-# combine tissue replicates
+```
+* **Combine Tissue Replicates**
+```
 module purge
 module load picard
 flag=1
@@ -292,7 +298,10 @@ for tissue in $(cat tissues);
 		flag=$(expr $flag + 1 )
 done;
 
-# get bed files
+```
+
+* **Get Bed Files**
+```
 module load bedtools2
 for i in  $(ls | grep clean_WTTS_reads.bam$);
 	do
@@ -302,13 +311,16 @@ done;
 
 ```
 
-* **RAMPAGE Data Analysis**
+### RAMPAGE Data Analysis
+
 ```
-### RAMPAGE bed files were obtained from PMC8015843 study
+#RAMPAGE bed files were obtained from PMC8015843 study
 rampage_dir='/usr/RAMPAGE'
 
 ```
-* **Combine Tissue Transcripts**
+
+### Combine Asembled Tissues RNA-seq-based Transcripts
+
 ```
 module load miniconda3/4.3.30-qdauveb
 cd ${rnaseq_dir}
@@ -323,7 +335,8 @@ gffread -w rna_seq_transcriptome.fa -g \
 	${genome_dir}/bt_ref_ARS-UCD1.2.RepeadMasked.fa rna_seq_transcriptome.gtf
 ```
 
-* **Quantify Tissue Transcripts/Genes**
+### Quantify Asembled Tissues RNA-seq-based Transcripts/Genes
+
 ```
 module load trinity
 cd ${rnaseq_dir}
@@ -344,7 +357,8 @@ done;
 
 ```
 
-* **Transcript Biotypes**
+### Transcript Biotypes
+
 ```
 # get transcript's ORFs
 wget https://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz
@@ -403,7 +417,12 @@ CPC2.py -i putative_ncrnas.fa -o putative_ncrnas_cpc2_results
 module load pyhton
 python get_transcript-gene_biotypes.py rna_seq_transcriptome.gtf \
 	   rna_seq_transcriptome.selected_orfs.Blastp.txt putative_ncrnas_cpc2_results
-# check homology of ncRNAs with known-ncRNAs
+
+```
+
+### Check ncRNAs Homology
+
+```
 module purge
 module load cufflinks
 module load ncbi-toolkit
@@ -419,7 +438,8 @@ blastn -query ncRNAs.fa -db ncbi_ensemble_release_102_ncrnas_db \
 
 ```
 
-* **Alternative-splicing Analysis**
+### Alternative-splicing Analysis
+
 ```
 AS_dir='/usr/RNA-seq/AS'
 cd ${AS_dir}
@@ -436,7 +456,9 @@ python get_unique_splice_exon_AS_events.py
 
 ```
 
-* **ATAC-seq Data Analysis**
+### ATAC-seq Data Analysis
+
+* **Trim Adapters and Low-quality Bases**
 ```
 atacseq_data="/usr/ATAC-seq"  
 cd ${atacseq_data}
@@ -448,7 +470,10 @@ for i in $(ls *_1.fastq)
 		trim_galore --paired ${id}_1.fastq ${id}_2.fastq;
 done;
 
-# alignment
+```
+
+* **Alignment**
+```
 module load bowtie
 module load samtools
 for i in $(ls 1_val_1)
@@ -463,7 +488,10 @@ for i in $(ls 1_val_1)
 		samtools sort ${tissue}_${treat}_unique.sam>${tissue}_${treat}_unique_sorted.sam	
 done;
 
-# filter duplicated reads
+```
+
+* **Filter Duplicated Reads**
+```
 module purge
 module load picard
 module load samtools
@@ -478,8 +506,10 @@ for i in $(ls unique_sorted.sam)
 		samtools view -bS ${tissue}_${treat}_DuplicatesRemoved.sam \
 		>${tissue}_${treat}_DuplicatesRemoved.bam	
 done;
+```
 
-# peak calling
+* **Peak Calling**
+```
 module load macs2
 for i in $(ls DuplicatesRemoved.bam$ | grep -v input)
 	do
@@ -493,17 +523,21 @@ done;
 
 ```
 
-* **ChIP-seq Data Analysis**
+### ChIP-seq Data Analysis
+
 ```
 #### ChIP-seq peaks (bed files) were received from MC7988148 study
 chip_dir='/usr/ChIP-seq'
+
 ```
-* **PacBio Iso-seq Data Analysis**
+
+### PacBio Iso-seq Data Analysis
+
+* **Convert Bax to Bam**
 ```
 ### NOTE: the matched RNA-seq data were processed as described in "RNA-seq pre-processing",
 ### "RNA-seq mapp to genome" and "Assemble RNA-seq-based Transcripts" sections
 
-# convert bax to bam
 module load smrtlink/7.0.0  		
 module load samtools
 module load bamtools
@@ -514,8 +548,10 @@ for i in $(cat libraries);
 	do 
 		bax2bam -o $lib $lib.1.bax.h5 $lib.2.bax.h5 $lib.3.bax.h5 
 done;  		
+```
 
-### get CCS
+* **Get CCS Reads**
+```
 for i in $(cat libraries);
 	do
 		ccs --noPolish --minLength=300 --minPasses=1 --minZScore=-999 --maxDropFraction=0.8\
@@ -529,7 +565,10 @@ for i in $(ls | grep ccs.bam$)
    		dataset create --type ConsensusReadSet ${id}.XML ${i}
 done;
 
-# get Full length (FL) reads
+```
+
+* **Get Full length (FL) Reads**
+```
 for i in $(ls | grep ccs.bam$)
 	do
 		id=$(echo $i | rev | cut -c 9- | rev)
@@ -539,7 +578,10 @@ for i in $(ls | grep ccs.bam$)
 		isoseq3 cluster ${id}.refinedFl.bam ${id}.unpolishedFl.bam --verbose
 done;
 
-# get tissue's FL reads
+```
+
+* **Get Tissue's FL Reads**
+```
 for i in $(awk '{print $3}' tissue-lib-info |  sort | uniq);
 	do 
 		awk -v tissue="${i}" '$3==tissue {print $1}' tissue-lib-info>tmp
@@ -548,7 +590,10 @@ for i in $(awk '{print $3}' tissue-lib-info |  sort | uniq);
      		isoseq3 cluster ${i}.refinedFl.bam ${i}.unpolishedFl.bam --verbose
 done;
 
-# get Full length non-chimeric FLNC reads
+```
+
+* **Get Full Length Non-Chimeric (FLNC) reads**
+```
 for i in $(ls | grep ccs.bam$)
 	do
   		id=$(echo $i | rev | cut -c 9- | rev)
@@ -559,7 +604,7 @@ for i in $(ls | grep ccs.bam$)
   		rm -r ${id}_tmp
 done;
 
-# get tissue's FLNC reads
+#get tissue's FLNC reads
 for i in $(awk '{print $3}' tissue-lib-info |  sort | uniq);
  do
 	echo "working on $i"
@@ -570,7 +615,10 @@ for i in $(awk '{print $3}' tissue-lib-info |  sort | uniq);
    	echo "$i is done"
 done;
 
-# genome-guided error-correction with FMLRC
+```
+
+* **Genome-Guided Error-Correction with FMLRC**
+```
 module purge
 module load fmlrc/1.0.0
 for tissue in $(cat pacbio_tissue_list):
@@ -579,7 +627,10 @@ for tissue in $(cat pacbio_tissue_list):
 			${tissue}.flnc.fasta ${tissue}_fmlrc_corrected_flnc.fa
 done;
 
-# denovo error-correction with proovread
+```
+
+* **denovo Error-Correction with Proovread**
+```
 module load miniconda
 source activate proovreadenv
 for tissue in $(cat pacbio_tissue_list):
@@ -590,11 +641,17 @@ for tissue in $(cat pacbio_tissue_list):
 			-p ${tissue}_proovread_corrected_flnc   -t 70 --no-sampling  --coverage=20 --ignore-sr-length
 done;		
 
-# concat proovread error-corrected reads with fmlrc error-corrected reads
+```
+
+* **Combine Proovread, and FMLRC Error-corrected reads***
+```
 cat ${tissue}_proovread_corrected_flnc.fa ${tissue}_fmlrc_corrected_flnc.fa\
 	> ${tissue}_fmlrc-proovread_corrected_flnc.fa
-	
-# mapp error-corrected pacbio reads to bovine genome
+
+```
+
+* **Mapp Error-corrected PacBio Reads to Bovine Genome**
+```
 module purge
 module load gmap-gsnap-legacy
 for tissue in $(cat pacbio_tissue_list)
@@ -609,12 +666,14 @@ for tissue in $(cat pacbio_tissue_list)
 			>${tissue}_fmlrc-proovread_corrected_flnc_sorted.sam
 done;
 
-# collapse & group reads into putative gene models
+```
+
+* **Collapse & Group Reads Into Putative Gene Models**
+```
 module purge
 module load smrtlink
 module load cufflinks
 module load bedtools2
-
 genome_dir="/usr/ARS-UCD1.2.RepeadMasked.GMAP"
 for tissue in $(cat pacbio_tissue_list)
 	do
@@ -634,7 +693,10 @@ done;
 ### "filter retained intron transcripts and non-canonical splice-junctions";
 ### "filter genomic DNA reads"
 
-# combine tissue transcripts
+```
+
+* **Combine Tissue Transcripts**
+```
 module load miniconda3/4.3.30-qdauveb
 source activate /home/beiki/.conda/envs/py-libs
 ls | grep gff$ | grep final> input_files
@@ -643,14 +705,16 @@ python combine-gtf_files.py input_files
 
 ```
 
-* **Oxford Nanopore Data Analysis**
+### Oxford Nanopore Data Analysis
+
 ```
 ### transcript coordinate file (gtf files) were received from PMC8173071 study
 nanopore_dir='/usr/nanopore'
 
 ```
 
-* **Transcript Structure Validation**
+### Transcript Structure Validation
+
 ```
 module load miniconda3/4.3.30-qdauveb
 source activate /home/beiki/.conda/envs/py-libs
@@ -673,7 +737,8 @@ python relate_gene_extension_to_expression.py
 
 ```
 
-* **Transcript Support With Epigenetic Data**
+### Transcript Support With Epigenetic Data
+
 ```
 module load bedtools2
 cd ${rnaseq_dir}
@@ -702,7 +767,8 @@ done;
 
 ```
 
-* **Transcript Border Validation**
+### Transcript Border Validation
+
 ```
 module load bedtools2
 
@@ -742,12 +808,12 @@ done;
 
 ```
 
-* **miRNA Data Analysis**
+### miRNA Data Analysis
+
+* **Trim Adapters and Low-quality Bases**
 ```
 mirna_dir="/usr/miRNA-seq"
 cd ${mirna_dir}
-
-#trim reads
 module load cutadapt
 module load fastqc
 for i in $(ls | grep fq.gz$)
@@ -756,7 +822,10 @@ for i in $(ls | grep fq.gz$)
     			--max_length 30 -a AACTGTAGGCACCATCAAT ${i}
 done;
 
-#map reads
+```
+
+* **Mapp Trimmed Readss**
+```
 module load mirdeep2
 
 for i in $(cat trimmed_file_list)
@@ -771,13 +840,17 @@ for i in $(cat trimmed_file_list)
     rm -r ${id}_trimmed.fq ${id}-info
 done;
 
-# get known miRNA sequences fro, mirBase
+```
+
+* **Quantify miRNAs**
+```
+* get known miRNA sequences fro, mirBase
 wget https://www.mirbase.org/ftp/CURRENT/mature.fa.gz
 wget https://www.mirbase.org/ftp/CURRENT/hairpin.fa.gz
 gunzip -c mature.fa.gz | grep "Bos taurus" -A1 >bos_taurus-mature.fa
 gunzip -c hairpin.fa.gz | grep "Bos taurus" -A1 >bos_taurus-hairpin.fa
 
-# quantify miRNAs
+#quantification
 module load mirdeep2
 for i in $(ls | grep reads_collapsed | grep .fa$)
     do
@@ -794,14 +867,15 @@ python get_miRNAs_summary.py
 
 ```
 
-* **Traits similarity Network**
+### Traits similarity Network
+
 ```
 module load python
 python trait_similarity_network.py
 
 ```
 
-* **Additional Analysis**
+### Additional Analysis
 ```
 module load python
 python compare_transcript_biotype_expression.py

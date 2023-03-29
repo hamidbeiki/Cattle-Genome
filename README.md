@@ -890,7 +890,7 @@ python get_tissue_specificity_info.py
 ### The constructed bovine trait similarity network is publicly available through the Animal Genome database:
 https://www.animalgenome.org/host/reecylab/a
 
-### The constructed cattle transcriptome and related sequences are publicly available in the Open Science Framework database:
+### The constructed transcriptome and related sequences are publicly available in the Open Science Framework database:
 https://osf.io/jze72/?view_only=d2dd1badf37e4bafae1e12731a0cc40d
 
 ### 

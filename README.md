@@ -526,7 +526,7 @@ done;
 ### ChIP-seq Data Analysis
 
 ```
-#### ChIP-seq peaks (bed files) were received from MC7988148 study
+#### ChIP-seq peaks (bed files) were received from PMC7988148 study
 chip_dir='/usr/ChIP-seq'
 
 ```
